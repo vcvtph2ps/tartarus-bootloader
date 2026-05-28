@@ -54,13 +54,13 @@ entry_long:
     mov fs, rax
     mov gs, rax
 
-    mov rax, qword [kernel_entry]
-    mov rdi, qword [boot_info]
-    mov rsi, qword [version]
+    mov rax, qword [abs kernel_entry]
+    mov rdi, qword [abs boot_info]
+    mov rsi, qword [abs version]
 
     xor rbp, rbp
     xor rsp, rsp
-    mov rsp, qword [stack]
+    mov rsp, qword [abs stack]
     push qword 0                                ; Push an invalid return address
 
     xor rbx, rbx
