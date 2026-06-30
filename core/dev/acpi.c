@@ -5,6 +5,10 @@
 #include <stddef.h>
 
 acpi_sdt_header_t *acpi_find_table(acpi_rsdp_t *rsdp, const char *signature) {
+    if(rsdp == NULL) {
+        log(LOG_LEVEL_ERROR, "acpi: RSDP is NULL");
+        return NULL;
+    }
     int entry_count;
     bool extended = false;
     uintptr_t buffer;
