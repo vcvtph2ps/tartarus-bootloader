@@ -1,3 +1,4 @@
+#ifdef __ARCH_X86_64
 #include "arch/acpi.h"
 #include "common/log.h"
 #include "common/panic.h"
@@ -424,3 +425,4 @@ static_assert(sizeof(boot_params_t) == PMM_GRANULARITY);
     linux_handoff(kernel_address, boot_params);
     __builtin_unreachable();
 }
+#endif
