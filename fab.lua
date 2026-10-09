@@ -6,7 +6,8 @@ local install = {}
 
 -- Options
 local options = {
-    platform = fab.option("platform", { "x86_64-uefi", "x86_64-bios", "aarch64-uefi" }) or "x86_64-uefi",
+    platform = fab.option("platform", { "x86_64-uefi", "x86_64-bios", "aarch64-uefi", "riscv64-opensbi" }) or
+        "x86_64-uefi",
     build_type = fab.option("buildtype", { "debug", "release" }) or "release",
 }
 
@@ -40,6 +41,12 @@ local cc_runtime = fab.git(
     "dae79833b57a01b9fd3e359ee31def69f5ae899b"
 )
 
+local smoldtb = fab.git(
+    "smoldtb",
+    "https://github.com/DeanoBurrito/smoldtb.git",
+    "72d3f8596fb91244e646944e09dcd93e1be03140"
+)
+
 -- Common
 local core_sources = sources(
     fab.glob("core/**/*.c", "!core/arch/**"),
@@ -68,6 +75,10 @@ local cflags = {
     "-Wshadow",
     "-Werror"
 }
+
+-- smoldtb
+local smoldtb_sources = sources(path(fab.build_dir(), smoldtb.path, "smoldtb.c"))
+table.insert(include_dirs, c.include_dir(path(fab.build_dir(), smoldtb.path)))
 
 local defines = {}
 
@@ -192,6 +203,15 @@ if options.platform:starts_with("x86_64") then
         asm = function(sources) return asmc:generate(sources, asm_flags) end
     })
 
+    -- smoldtb will break with these errors since we use -werror
+    local smoldtb_cflags = {}
+    table.extend(smoldtb_cflags, cflags)
+    table.extend(smoldtb_cflags, {
+        "-Wno-unused-function",
+        "-Wno-tautological-overlap-compare",
+    })
+    table.extend(core_objects, cc:generate(smoldtb_sources, smoldtb_cflags, include_dirs))
+
     local core = linker:link("tartarus.elf", core_objects, ld_flags, linker_script)
     local binary = objcopy_rule:build("tartarus.bin", { core }, {})
 
@@ -265,6 +285,15 @@ if options.platform == "aarch64-uefi" then
         S = function(sources) return cc:generate(sources, cflags, include_dirs) end,
     })
 
+    -- smoldtb will break with these errors since we use -werror
+    local smoldtb_cflags = {}
+    table.extend(smoldtb_cflags, cflags)
+    table.extend(smoldtb_cflags, {
+        "-Wno-unused-function",
+        "-Wno-tautological-overlap-compare",
+    })
+    table.extend(core_objects, cc:generate(smoldtb_sources, smoldtb_cflags, include_dirs))
+
     local core = linker:link("tartarus.elf", core_objects, ld_flags, linker_script)
     local binary = objcopy_rule:build("tartarus.bin", { core }, {})
 
@@ -275,6 +304,59 @@ if options.platform == "aarch64-uefi" then
     ):build("tartarus.efi", { binary }, {})
 
     install["share/tartarus/tartarus.efi"] = efi
+end
+
+if options.platform == "riscv64-opensbi" then
+    table.extend(defines, {
+        "__ARCH_RISCV64",
+        "__PLATFORM_RISCV64_OPENSBI",
+    })
+
+    table.extend(core_sources, sources(fab.glob("core/arch/riscv64/**/*.{c,S}", "!core/arch/riscv64/uefi/**")))
+
+    table.insert(include_dirs, c.include_dir(path(fab.build_dir(), freestanding_c_headers.path, "riscv64/include")))
+
+
+    table.extend(cflags, {
+        "-target riscv64-unknown-none-elf",
+        "-mabi=lp64",
+        "-march=rv64ima_zihintpause",
+        "-mcmodel=medany",
+        "-fno-pic",
+        "-fshort-wchar",
+        "-funsigned-char",
+    })
+
+    local ld_flags = {
+        "--no-relax-gp",
+        "-melf64lriscv",
+        "-ztext",
+    }
+
+    local linker_script = fab.def_source("core/arch/riscv64/opensbi/tartarus.ld")
+
+    for _, define in ipairs(defines) do
+        table.insert(cflags, "-D" .. define)
+    end
+
+    local core_objects = generate(core_sources, {
+        c = function(sources) return cc:generate(sources, cflags, include_dirs) end,
+        S = function(sources) return cc:generate(sources, cflags, include_dirs) end,
+    })
+
+    -- smoldtb will break with these errors since we use -werror
+    local smoldtb_cflags = {}
+    table.extend(smoldtb_cflags, cflags)
+    table.extend(smoldtb_cflags, {
+        "-Wno-unused-function",
+        "-Wno-tautological-overlap-compare",
+    })
+    table.extend(core_objects, cc:generate(smoldtb_sources, smoldtb_cflags, include_dirs))
+
+    local core = linker:link("tartarus.elf", core_objects, ld_flags, linker_script)
+    local binary = objcopy_rule:build("tartarus.bin", { core }, {})
+
+    install["share/tartarus/riscv64-opensbi.bin"] = binary
 end
 
 return { install = install }
